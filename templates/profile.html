@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мой аккаунт</title>
+</head>
+    <header style="background-color: rgb(48, 48, 48); display: flex;">
+           <div style="background-color: rgb(35, 35, 35); padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+        <a href="/chat" style="color: white; font-weight: bold; font-size: 20px; text-decoration: none;">BricksChat</a>
+        <div>
+            <a href="/chat" style="color: rgb(100, 150, 255); text-decoration: none; margin-right: 15px;">Чаты</a>
+            <a href="/logout" style="color: rgb(220, 120, 120); text-decoration: none;">Выйти</a>
+        </div>
+    </div>
+    </header>
+<body style="background-color: rgb(20, 20, 20); font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh;">
+
+    <div style="flex: 1; display: flex; justify-content: center; align-items: center;">
+        <div style="background-color: rgb(35, 35, 35); padding: 40px; border-radius: 12px; width: 320px; text-align: center;">
+            <h2 style="color: white; margin: 0 0 20px 0;">Привет, {{ username }}!</h2>
+
+            <p style="color: gray; margin: 0 0 25px 0;">Это твоя страница аккаунта</p>
+
+            <a href="/logout"
+               style="display: block; padding: 10px; color: white; background-color: rgb(48, 48, 48); border-radius: 6px; text-decoration: none;">
+                Выйти
+            </a>
+        </div>
+    </div>
+
+</body>
+</html>

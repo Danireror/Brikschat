@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BricksChat</title>
+</head>
+<body style="background-color: rgb(20, 20, 20); font-family: Arial, sans-serif; margin: 0; min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden;">
+
+    <!-- Шапка -->
+    <div style="background-color: rgb(35, 35, 35); padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+        <a href="/chat" style="color: white; font-weight: bold; font-size: 20px; text-decoration: none;">BricksChat</a>
+        <div>
+            <a href="/chat" style="color: rgb(100, 150, 255); text-decoration: none; margin-right: 15px;">Чаты</a>
+            <a href="/profile" style="color: rgb(100, 150, 255); text-decoration: none; margin-right: 15px;">Аккаунт</a>
+            <a href="/logout" style="color: rgb(220, 120, 120); text-decoration: none;">Выйти</a>
+        </div>
+    </div>
+
+    <div style="flex: 1; display: flex; justify-content: center; padding: 20px;">
+        <div style="width: 600px; max-width: 95%; display: flex; flex-direction: column;">
+
+            {% if other %}
+                <h2 style="color: white; margin: 0 0 15px 0;">Диалог с {{ other }}</h2>
+
+                <div id="messages"
+                     style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; max-height: 60vh; overflow-y: auto; width: 100%; box-sizing: border-box;"></div>
+
+                <form action="/send" method="POST" style="display: flex; gap: 8px;">
+                    <input type="hidden" name="recipient" value="{{ other }}">
+                    <input type="text" name="text" id="text" placeholder="Сообщение..." required autocomplete="off"
+                           style="flex: 1; padding: 10px; background-color: rgb(48, 48, 48); color: white; border: none; border-radius: 6px; min-width: 0;">
+                    <button type="submit"
+                            style="padding: 10px 20px; color: white; background-color: rgb(48, 48, 48); border: none; border-radius: 6px; cursor: pointer;">
+                        Отправить
+                    </button>
+                </form>
+
+                <script>
+                    const me = "{{ me }}";
+
+                    async function loadMessages() {
+                        const response = await fetch('/api/messages/{{ other }}');
+                        const data = await response.json();
+                        const box = document.getElementById('messages');
+                        box.innerHTML = '';
+                        if (data.length === 0) {
+                            const p = document.createElement('p');
+                            p.textContent = 'Сообщений пока нет — напиши первым!';
+                            p.style.color = 'gray';
+                            box.appendChild(p);
+                        }
+                        for (const msg of data) {
+                            const div = document.createElement('div');
+                            const mine = msg.sender === me;
+
+                            div.style.maxWidth = '75%';
+                            div.style.padding = '8px 12px';
+                            div.style.borderRadius = '10px';
+                            div.style.boxSizing = 'border-box';
+                            div.style.overflowWrap = 'anywhere';
+
+                            if (mine) {
+                                div.style.alignSelf = 'flex-end';
+                                div.style.backgroundColor = 'rgb(30, 90, 160)';
+                            } else {
+                                div.style.alignSelf = 'flex-start';
+                                div.style.backgroundColor = 'rgb(48, 48, 48)';
+                            }
+
+                            const label = document.createElement('div');
+                            label.textContent = (mine ? 'Ты' : msg.sender) + ' · ' + msg.time;
+                            label.style.fontSize = '11px';
+                            label.style.opacity = '0.7';
+                            label.style.marginBottom = '3px';
+
+                            const textDiv = document.createElement('div');
+                            textDiv.textContent = msg.text;
+                            textDiv.style.color = 'white';
+
+                            div.appendChild(label);
+                            div.appendChild(textDiv);
+                            box.appendChild(div);
+                        }
+                        box.scrollTop = box.scrollHeight;
+                    }
+
+                    loadMessages();
+                    setInterval(loadMessages, 2000);
+                </script>
+
+            {% else %}
+                <h2 style="color: white; margin: 0 0 15px 0;">Твои чаты</h2>
+
+                <input type="text" id="search" placeholder="Найти человека по имени..." autocomplete="off"
+                       style="width: 100%; box-sizing: border-box; padding: 10px; margin-bottom: 15px; background-color: rgb(48, 48, 48); color: white; border: none; border-radius: 6px;">
+
+                <div id="search-results" style="margin-bottom: 20px;"></div>
+
+                <div id="contacts">
+                    {% for user in all_users %}
+                        <a href="/chat/{{ user }}"
+                           style="display: block; padding: 12px; margin-bottom: 8px; background-color: rgb(35, 35, 35); color: white; border-radius: 8px; text-decoration: none;">
+                            {{ user }}
+                        </a>
+                    {% endfor %}
+                    {% if all_users|length == 0 %}
+                        <p style="color: gray;">Пока никого нет. Найди человека через поиск выше и нажми «Добавить».</p>
+                    {% endif %}
+                </div>
+
+                <script>
+                    const searchInput = document.getElementById('search');
+                    const resultsBox = document.getElementById('search-results');
+
+                    searchInput.addEventListener('input', async () => {
+                        const query = searchInput.value.trim();
+                        if (!query) {
+                            resultsBox.innerHTML = '';
+                            return;
+                        }
+                        const response = await fetch('/api/search?query=' + encodeURIComponent(query));
+                        const users = await response.json();
+                        resultsBox.innerHTML = '';
+                        if (users.length === 0) {
+                            const p = document.createElement('p');
+                            p.textContent = 'Никого не нашлось.';
+                            p.style.color = 'gray';
+                            resultsBox.appendChild(p);
+                            return;
+                        }
+                        for (const user of users) {
+                            const row = document.createElement('div');
+                            row.style.display = 'flex';
+                            row.style.justifyContent = 'space-between';
+                            row.style.alignItems = 'center';
+                            row.style.padding = '10px';
+                            row.style.marginBottom = '6px';
+                            row.style.backgroundColor = 'rgb(40, 40, 45)';
+                            row.style.borderRadius = '8px';
+
+                            const name = document.createElement('span');
+                            name.textContent = user;
+                            name.style.color = 'white';
+
+                            const buttons = document.createElement('div');
+
+                            const chatLink = document.createElement('a');
+                            chatLink.href = '/chat/' + user;
+                            chatLink.textContent = 'Написать';
+                            chatLink.style.color = 'rgb(100, 150, 255)';
+                            chatLink.style.textDecoration = 'none';
+                            chatLink.style.marginRight = '12px';
+
+                            const addLink = document.createElement('a');
+                            addLink.href = '/add/' + user;
+                            addLink.textContent = 'Добавить';
+                            addLink.style.color = 'rgb(120, 220, 120)';
+                            addLink.style.textDecoration = 'none';
+
+                            buttons.appendChild(chatLink);
+                            buttons.appendChild(addLink);
+                            row.appendChild(name);
+                            row.appendChild(buttons);
+                            resultsBox.appendChild(row);
+                        }
+                    });
+                </script>
+            {% endif %}
+
+        </div>
+    </div>
+
+</body>
+</html>
