@@ -9,6 +9,15 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "лбьенre34nmk231")
 
 DB_NAME = "shop.db"
+UPLOAD_FOLDER = "static/uploads"
+
+# Разрешённые форматы изображений (чтобы вместо фото не залили что-то другое)
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def init_db():
@@ -39,6 +48,14 @@ def init_db():
         )
     """)
     conn.commit()
+
+    # Если база уже существовала, добавляем колонку для фото (безопасно для старых данных)
+    cursor.execute("PRAGMA table_info(messages)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'photo_path' not in columns:
+        cursor.execute("ALTER TABLE messages ADD COLUMN photo_path TEXT")
+        conn.commit()
+
     conn.close()
 
 
@@ -178,13 +195,23 @@ def send():
 
     recipient = request.form.get('recipient')
     text = request.form.get('text', '').strip()
+    photo = request.files.get('photo')
 
-    if text and recipient:
+    photo_path = None
+    if photo and photo.filename and allowed_file(photo.filename):
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        # Уникальное имя, чтобы файлы с одинаковым названием не перезаписывали друг друга
+        ext = photo.filename.rsplit('.', 1)[1].lower()
+        filename = f"{session['username']}_{os.urandom(4).hex()}.{ext}"
+        photo.save(os.path.join(UPLOAD_FOLDER, filename))
+        photo_path = f"uploads/{filename}"
+
+    if (text or photo_path) and recipient:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO messages (sender, recipient, text, created_at) VALUES (?, ?, ?, ?)",
-            (session['username'], recipient, text, datetime.now().strftime('%H:%M'))
+            "INSERT INTO messages (sender, recipient, text, created_at, photo_path) VALUES (?, ?, ?, ?, ?)",
+            (session['username'], recipient, text, datetime.now().strftime('%H:%M'), photo_path)
         )
         conn.commit()
         conn.close()
@@ -200,14 +227,16 @@ def api_messages(username):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT sender, text, created_at FROM messages
+        SELECT sender, text, created_at, photo_path FROM messages
         WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
         ORDER BY id
     """, (session['username'], username, username, session['username']))
     rows = cursor.fetchall()
     conn.close()
 
-    return jsonify([{'sender': r[0], 'text': r[1], 'time': r[2]} for r in rows])
+    return jsonify([
+        {'sender': r[0], 'text': r[1], 'time': r[2], 'photo': r[3]} for r in rows
+    ])
 
 
 @app.route('/profile')
@@ -225,3 +254,4 @@ def logout():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
+
