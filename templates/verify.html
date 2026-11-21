@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Подтверждение почты</title>
+</head>
+<body style="background-color: rgb(20, 20, 20); font-family: Arial, sans-serif; color: white; display: flex; justify-content: center; padding-top: 80px;">
+
+    <div style="background-color: rgb(35, 35, 35); padding: 30px; border-radius: 12px; width: 350px;">
+        <h2 style="margin-top: 0;">Подтверждение почты</h2>
+
+        {% if error %}
+            <p style="color: rgb(220, 120, 120);">{{ error }}</p>
+        {% endif %}
+
+        {% if sent %}
+            <p style="color: rgb(120, 220, 120);">Код отправлен на {{ email }}. Проверь почту!</p>
+        {% endif %}
+
+        <form action="/verify/check" method="POST">
+            <input type="hidden" name="email" value="{{ email }}">
+            <input type="text" name="code" placeholder="Код из письма" required
+                   style="width: 100%; box-sizing: border-box; padding: 10px; margin-bottom: 12px;
+                          background-color: rgb(48, 48, 48); color: white; border: none; border-radius: 6px;">
+            <button type="submit"
+                    style="width: 100%; padding: 10px; color: white; background-color: rgb(48, 48, 48);
+                           border: none; border-radius: 6px; cursor: pointer;">
+                Подтвердить
+            </button>
+        </form>
+    </div>
+
+</body>
+</html>
