@@ -1,14 +1,11 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
-import secrets
 import random
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta
-
 
 app = Flask(__name__)
 # Ключ берём из переменной окружения, а локально — запасной вариант
@@ -20,7 +17,6 @@ SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.yandex.ru")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
 SMTP_USER = os.environ.get("SMTP_USER", "")   # твоя почта, например kotik@yandex.ru
 SMTP_PASS = os.environ.get("SMTP_PASS", "")   # пароль приложения
-
 
 # Разрешённые форматы изображений (чтобы вместо фото не залили что-то другое)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -58,16 +54,6 @@ def init_db():
             UNIQUE(owner, contact)
         )
     """)
-    conn.commit()
-
-    # Если база уже существовала, добавляем колонку для фото (безопасно для старых данных)
-    cursor.execute("PRAGMA table_info(messages)")
-    columns = [row[1] for row in cursor.fetchall()]
-    if 'photo_path' not in columns:
-        cursor.execute("ALTER TABLE messages ADD COLUMN photo_path TEXT")
-        conn.commit()
-
-    conn.close()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS email_codes (
             email TEXT NOT NULL,
@@ -76,16 +62,46 @@ def init_db():
             UNIQUE(email)
         )
     """)
+    conn.commit()
 
+    # Если база уже существовала, добавляем колонки для фото и почты
+    cursor.execute("PRAGMA table_info(messages)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'photo_path' not in columns:
+        cursor.execute("ALTER TABLE messages ADD COLUMN photo_path TEXT")
+        conn.commit()
+
+    cursor.execute("PRAGMA table_info(users)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'email' not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        conn.commit()
+
+    conn.close()
 
 
 def get_db():
     return sqlite3.connect(DB_NAME)
 
 
+def send_code_email(to_email, code):
+    msg = MIMEText(
+        f"Твой код подтверждения: {code}\n\n"
+        f"Код действует 10 минут. Если это не ты — просто проигнорируй письмо.",
+        "plain", "utf-8"
+    )
+    msg["Subject"] = "Код подтверждения BricksChat"
+    msg["From"] = SMTP_USER
+    msg["To"] = to_email
+
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+        server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
+
+
 init_db()
 
-@app.route('/verify')
+
 @app.route('/')
 def home():
     if 'username' in session:
@@ -266,30 +282,6 @@ def profile():
     return render_template('profile.html', username=session['username'])
 
 
-@app.route('/logout')
-def logout():
-    session.pop('username', None)
-    return redirect(url_for('show_login'))
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
-
-def send_code_email(to_email, code):
-    msg = MIMEText(
-        f"Твой код подтверждения: {code}\n\n"
-        f"Код действует 10 минут. Если это не ты — просто проигнорируй письмо.",
-        "plain", "utf-8"
-    )
-    msg["Subject"] = "Код подтверждения BricksChat"
-    msg["From"] = SMTP_USER
-    msg["To"] = to_email
-
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-        server.login(SMTP_USER, SMTP_PASS)
-        server.send_message(msg)
-
-
 @app.route('/verify/email', methods=['POST'])
 def request_code():
     if 'username' not in session:
@@ -337,11 +329,6 @@ def check_code():
         # Код верный — привязываем email к пользователю
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [c[1] for c in cursor.fetchall()]
-        if 'email' not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN email TEXT")
-            conn.commit()
         cursor.execute("UPDATE users SET email = ? WHERE username = ?",
                        (email, session['username']))
         conn.commit()
@@ -349,3 +336,14 @@ def check_code():
         return redirect(url_for('profile'))
 
     return render_template('verify.html', email=email, error='Неверный или устаревший код')
+
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('show_login'))
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False)
+
