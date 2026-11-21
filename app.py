@@ -1,24 +1,27 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import sqlite3
-from datetime import datetime, timedelta
-from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 import random
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
 from email.mime.text import MIMEText
 
 app = Flask(__name__)
-# Ключ берём из переменной окружения, а локально — запасной вариант
 app.secret_key = os.environ.get("SECRET_KEY", "лбьенre34nmk231")
 
-DB_NAME = "shop.db"
-UPLOAD_FOLDER = "static/uploads"
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.yandex.ru")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
-SMTP_USER = os.environ.get("SMTP_USER", "")   # твоя почта, например kotik@yandex.ru
-SMTP_PASS = os.environ.get("SMTP_PASS", "")   # пароль приложения
+# --- База данных: храним в постоянной папке /data, если она доступна ---
+if os.path.isdir("/data") and os.access("/data", os.W_OK):
+    DB_PATH = "/data/shop.db"
+else:
+    DB_PATH = "shop.db"  # локальный запасной вариант (на твоём компьютере)
 
-# Разрешённые форматы изображений (чтобы вместо фото не залили что-то другое)
+UPLOAD_FOLDER = "static/uploads"
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASS = os.environ.get("SMTP_PASS", "")
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 
@@ -28,7 +31,7 @@ def allowed_file(filename):
 
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -64,7 +67,7 @@ def init_db():
     """)
     conn.commit()
 
-    # Если база уже существовала, добавляем колонки для фото и почты
+    # Добавляем колонки, если база существовала раньше
     cursor.execute("PRAGMA table_info(messages)")
     columns = [row[1] for row in cursor.fetchall()]
     if 'photo_path' not in columns:
@@ -78,10 +81,11 @@ def init_db():
         conn.commit()
 
     conn.close()
+    print(f"=== БАЗА ГОТОВА: {DB_PATH} ===")
 
 
 def get_db():
-    return sqlite3.connect(DB_NAME)
+    return sqlite3.connect(DB_PATH)
 
 
 def send_code_email(to_email, code):
@@ -94,9 +98,30 @@ def send_code_email(to_email, code):
     msg["From"] = SMTP_USER
     msg["To"] = to_email
 
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-        server.login(SMTP_USER, SMTP_PASS)
-        server.send_message(msg)
+    try:
+        # Попытка 1: SSL (порт 465)
+        print(f"=== ПОПЫТКА ОТПРАВКИ (SSL 465) НА {to_email} ===")
+        with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=10) as server:
+            server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(msg)
+        print("=== ПИСЬМО ОТПРАВЛЕНО (SSL) ===")
+        return
+    except Exception as e:
+        print(f"=== SSL НЕ СРАБОТАЛ: {e} ===")
+
+    try:
+        # Попытка 2: STARTTLS (порт 587)
+        print(f"=== ПОПЫТКА ОТПРАВКИ (STARTTLS 587) НА {to_email} ===")
+        with smtplib.SMTP(SMTP_HOST, 587, timeout=10) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(msg)
+        print("=== ПИСЬМО ОТПРАВЛЕНО (STARTTLS) ===")
+        return
+    except Exception as e:
+        print(f"=== STARTTLS НЕ СРАБОТАЛ: {e} ===")
+
+    print("=== ПИСЬМО ТАК И НЕ ОТПРАВИЛОСЬ — СМОТРИ ОШИБКИ ВЫШЕ ===")
 
 
 init_db()
@@ -236,7 +261,6 @@ def send():
     photo_path = None
     if photo and photo.filename and allowed_file(photo.filename):
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-        # Уникальное имя, чтобы файлы с одинаковым названием не перезаписывали друг друга
         ext = photo.filename.rsplit('.', 1)[1].lower()
         filename = f"{session['username']}_{os.urandom(4).hex()}.{ext}"
         photo.save(os.path.join(UPLOAD_FOLDER, filename))
@@ -284,7 +308,10 @@ def profile():
 
 @app.route('/verify/email', methods=['POST'])
 def request_code():
+    print("=== ЗАПРОС ПРИШЁЛ НА /verify/email ===")
+
     if 'username' not in session:
+        print("=== СЕССИИ НЕТ — ПЕРЕБРАСЫВАЕТ НА ЛОГИН ===")
         return redirect(url_for('show_login'))
 
     email = request.form.get('email', '').strip().lower()
@@ -292,6 +319,8 @@ def request_code():
         return redirect(url_for('profile'))
 
     code = str(random.randint(100000, 999999))
+    print(f"СГЕНЕРИРОВАН КОД: {code} ДЛЯ {email}")
+
     expires = (datetime.now() + timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
 
     conn = get_db()
@@ -303,10 +332,10 @@ def request_code():
     conn.commit()
     conn.close()
 
-    try:
+    if not SMTP_USER or not SMTP_PASS:
+        print("=== ОШИБКА: SMTP_USER ИЛИ SMTP_PASS НЕ ЗАДАНЫ В ПЕРЕМЕННЫХ ===")
+    else:
         send_code_email(email, code)
-    except Exception as e:
-        print(f"Ошибка отправки письма: {e}")  # пока пишем в лог, потом красиво оформим
 
     return render_template('verify.html', email=email, sent=True)
 
@@ -326,7 +355,6 @@ def check_code():
     conn.close()
 
     if row and row[0] == code and datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S') > datetime.now():
-        # Код верный — привязываем email к пользователю
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET email = ? WHERE username = ?",
