@@ -68,7 +68,7 @@ def init_db():
         conn.commit()
 
     conn.close()
-        cursor.execute("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS email_codes (
             email TEXT NOT NULL,
             code TEXT NOT NULL,
