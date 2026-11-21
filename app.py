@@ -3,6 +3,12 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 import sqlite3
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+import smtplib
+import secrets
+import random
+from email.mime.text import MIMEText
+from datetime import datetime, timedelta
+
 
 app = Flask(__name__)
 # Ключ берём из переменной окружения, а локально — запасной вариант
@@ -10,6 +16,11 @@ app.secret_key = os.environ.get("SECRET_KEY", "лбьенre34nmk231")
 
 DB_NAME = "shop.db"
 UPLOAD_FOLDER = "static/uploads"
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.yandex.ru")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+SMTP_USER = os.environ.get("SMTP_USER", "")   # твоя почта, например kotik@yandex.ru
+SMTP_PASS = os.environ.get("SMTP_PASS", "")   # пароль приложения
+
 
 # Разрешённые форматы изображений (чтобы вместо фото не залили что-то другое)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -57,6 +68,15 @@ def init_db():
         conn.commit()
 
     conn.close()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS email_codes (
+            email TEXT NOT NULL,
+            code TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            UNIQUE(email)
+        )
+    """)
+
 
 
 def get_db():
@@ -65,7 +85,7 @@ def get_db():
 
 init_db()
 
-
+@app.route('/verify')
 @app.route('/')
 def home():
     if 'username' in session:
@@ -255,3 +275,77 @@ def logout():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
 
+def send_code_email(to_email, code):
+    msg = MIMEText(
+        f"Твой код подтверждения: {code}\n\n"
+        f"Код действует 10 минут. Если это не ты — просто проигнорируй письмо.",
+        "plain", "utf-8"
+    )
+    msg["Subject"] = "Код подтверждения BricksChat"
+    msg["From"] = SMTP_USER
+    msg["To"] = to_email
+
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+        server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
+
+
+@app.route('/verify/email', methods=['POST'])
+def request_code():
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+
+    email = request.form.get('email', '').strip().lower()
+    if not email or '@' not in email:
+        return redirect(url_for('profile'))
+
+    code = str(random.randint(100000, 999999))
+    expires = (datetime.now() + timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR REPLACE INTO email_codes (email, code, expires_at) VALUES (?, ?, ?)",
+        (email, code, expires)
+    )
+    conn.commit()
+    conn.close()
+
+    try:
+        send_code_email(email, code)
+    except Exception as e:
+        print(f"Ошибка отправки письма: {e}")  # пока пишем в лог, потом красиво оформим
+
+    return render_template('verify.html', email=email, sent=True)
+
+
+@app.route('/verify/check', methods=['POST'])
+def check_code():
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+
+    email = request.form.get('email', '').strip().lower()
+    code = request.form.get('code', '').strip()
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT code, expires_at FROM email_codes WHERE email = ?", (email,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row and row[0] == code and datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S') > datetime.now():
+        # Код верный — привязываем email к пользователю
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [c[1] for c in cursor.fetchall()]
+        if 'email' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            conn.commit()
+        cursor.execute("UPDATE users SET email = ? WHERE username = ?",
+                       (email, session['username']))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('profile'))
+
+    return render_template('verify.html', email=email, error='Неверный или устаревший код')
