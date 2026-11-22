@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from email.mime.text import MIMEText
+import requests
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "лбьенre34nmk231")
@@ -88,41 +89,48 @@ def get_db():
     return sqlite3.connect(DB_PATH)
 
 
+import os
+import requests
+
 def send_code_email(to_email, code):
     api_key = os.environ.get('UNISENDER_API_KEY')
+    sender = os.environ.get('SMTP_USER', '')
+
+    print(f"=== ПОЧТА: начата отправка на {to_email} ===")
 
     if not api_key:
-        print("=== ОШИБКА: UNISENDER_API_KEY не найден в переменных окружения ===")
-        return
-
-    payload = {
-        "api_key": api_key,
-        "email": to_email,
-        "sender_name": "BricksChat",
-        "sender_email": os.environ.get("SMTP_USER", ""),
-        "subject": "Код подтверждения BricksChat",
-        "body": f"Твой код подтверждения: {code}\n\nКод действителен 10 минут. Если ты не запрашивал код — просто проигнорируй это письмо."
-    }
+        print("=== ОШИБКА: UNISENDER_API_KEY не задан в переменных ===")
+        return False
 
     try:
-        response = requests.post(
+        resp = requests.post(
             "https://api.unisender.com/ru/api/sendEmail",
-            data=payload,
-            timeout=10
+            data={
+                "api_key": api_key,
+                "email": to_email,
+                "sender_name": "BricksChat",
+                "sender_email": sender,
+                "subject": "Код подтверждения BricksChat",
+                "body": f"Твой код: {code}\n\nКод действует 10 минут.",
+            },
+            timeout=10,
         )
-
-        if response.status_code == 200:
-            print(f"=== УСПЕХ: Письмо для {to_email} принято Unisender ===")
-        else:
-            print(f"=== ОШИБКА UNISENDER: Статус {response.status_code}, ответ: {response.text} ===")
-
+        if resp.status_code == 200:
+            print(f"=== УСПЕХ: письмо для {to_email} принято Unisender ===")
+            return True
+        print(f"=== ОШИБКА UNISENDER: {resp.status_code} {resp.text} ===")
+        return False
     except Exception as e:
-        print(f"=== КРИТИЧЕСКАЯ ОШИБКА (сеть/запрос): {str(e)} ===")
-
-
+        print(f"=== КРИТИЧЕСКАЯ ОШИБКА СЕТИ: {e} ===")
+        return False
 
 init_db()
 
+@app.route('/test_email')
+def test_email():
+    print("=== ДИАГНОСТИКА: маршрут /test_email РАБОТАЕТ ===")
+    ok = send_code_email("danireror@yourmail.com", "111111")  # подставь свою почту
+    return f"Код отправки: {'OK' if ok else 'FAIL'} — смотри логи Amvera"
 
 @app.route('/')
 def home():
