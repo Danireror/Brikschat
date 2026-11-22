@@ -14,18 +14,14 @@
 <body>
     <div class="container">
         <h2 style="text-align: center;">Регистрация</h2>
+
         {% if error %}
             <p class="error">Пользователь с таким именем уже существует</p>
         {% endif %}
+
         <form action="/submit-register" method="POST">
             <input type="text" name="username" placeholder="Придумайте имя" required>
             <input type="password" name="password" placeholder="Придумайте пароль" required>
-
-
-        </form>
-        <form action="/verify/email" method="POST">
-            <input type="email" name="email" placeholder="Твоя почта" required>
-            <button type="submit">Получить код</button>
             <button type="submit">Зарегистрироваться</button>
         </form>
 

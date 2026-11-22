@@ -2,33 +2,33 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Подтверждение почты</title>
+    <title>Подтверждение - BricksChat</title>
+    <style>
+        body { background-color: #141414; color: white; font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: #232323; padding: 30px; border-radius: 10px; width: 300px; }
+        input { width: 100%; padding: 10px; margin: 10px 0; background: #303030; border: none; color: white; box-sizing: border-box; border-radius: 4px; }
+        button { width: 100%; padding: 10px; background: #1e5bbf; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        .info { color: #8fbc8f; text-align: center; margin-bottom: 15px; }
+    </style>
 </head>
-<body style="background-color: rgb(20, 20, 20); font-family: Arial, sans-serif; color: white; display: flex; justify-content: center; padding-top: 80px;">
-
-    <div style="background-color: rgb(35, 35, 35); padding: 30px; border-radius: 12px; width: 350px;">
-        <h2 style="margin-top: 0;">Подтверждение почты</h2>
-
-        {% if error %}
-            <p style="color: rgb(220, 120, 120);">{{ error }}</p>
-        {% endif %}
+<body>
+    <div class="container">
+        <h2 style="text-align: center;">Подтверждение почты</h2>
 
         {% if sent %}
-            <p style="color: rgb(120, 220, 120);">Код отправлен на {{ email }}. Проверь почту!</p>
+            <p class="info">Код отправлен на {{ email }}. Проверь почту и папку «Спам».</p>
+            <form action="/verify/check" method="POST">
+                <input type="hidden" name="email" value="{{ email }}">
+                <input type="text" name="code" placeholder="Код из письма" required>
+                <button type="submit">Подтвердить</button>
+            </form>
+        {% else %}
+            <form action="/verify/email" method="POST">
+                <input type="email" name="email" placeholder="Твоя почта" required>
+                <button type="submit">Получить код</button>
+            </form>
         {% endif %}
-
-        <form action="/verify/check" method="POST">
-            <input type="hidden" name="email" value="{{ email }}">
-            <input type="text" name="code" placeholder="Код из письма" required
-                   style="width: 100%; box-sizing: border-box; padding: 10px; margin-bottom: 12px;
-                          background-color: rgb(48, 48, 48); color: white; border: none; border-radius: 6px;">
-            <button type="submit"
-                    style="width: 100%; padding: 10px; color: white; background-color: rgb(48, 48, 48);
-                           border: none; border-radius: 6px; cursor: pointer;">
-                Подтвердить
-            </button>
-        </form>
     </div>
-
 </body>
 </html>
+
