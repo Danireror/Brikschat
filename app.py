@@ -184,7 +184,15 @@ def handle_register():
     conn.close()
 
     session['username'] = username
-    return redirect(url_for('chat'))
+    print(f"=== ЗАРЕГИСТРИРОВАН И ЗАЛОГИНЕН: {username} ===")
+    return redirect(url_for('verify_page'))
+
+
+@app.route('/verify')
+def verify_page():
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+    return render_template('verify.html', sent=False, error=None, email='')
 
 
 @app.route('/chat')
@@ -316,7 +324,7 @@ def request_code():
 
     email = request.form.get('email', '').strip().lower()
     if not email or '@' not in email:
-        return redirect(url_for('profile'))
+        return redirect(url_for('verify_page'))
 
     code = str(random.randint(100000, 999999))
     print(f"СГЕНЕРИРОВАН КОД: {code} ДЛЯ {email}")
