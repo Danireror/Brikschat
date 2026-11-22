@@ -94,13 +94,15 @@ import os
 import requests
 
 def send_code_email(to_email, code):
+    import requests
+
     api_key = os.environ.get('UNISENDER_API_KEY')
     sender = os.environ.get('SMTP_USER', '')
 
     print(f"=== ПОЧТА: начата отправка на {to_email} ===")
 
     if not api_key:
-        print("=== ОШИБКА: UNISENDER_API_KEY не задан в переменных ===")
+        print("=== ОШИБКА: UNISENDER_API_KEY не задан ===")
         return False
 
     try:
@@ -116,14 +118,23 @@ def send_code_email(to_email, code):
             },
             timeout=10,
         )
-        if resp.status_code == 200:
-            print(f"=== УСПЕХ: письмо для {to_email} принято Unisender ===")
+        # Разбираем JSON — статус 200 обманчив
+        try:
+            data = resp.json()
+        except Exception:
+            print(f"=== ОШИБКА UNISENDER (не JSON): {resp.status_code} {resp.text} ===")
+            return False
+
+        if "result" in data:
+            print(f"=== УСПЕХ: письмо принято, email_id = {data['result'].get('email_id')} ===")
             return True
-        print(f"=== ОШИБКА UNISENDER: {resp.status_code} {resp.text} ===")
+        print(f"=== ОТКАЗ UNISENDER: {data} ===")
         return False
+
     except Exception as e:
         print(f"=== КРИТИЧЕСКАЯ ОШИБКА СЕТИ: {e} ===")
         return False
+
 
 init_db()
 
