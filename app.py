@@ -89,39 +89,36 @@ def get_db():
 
 
 def send_code_email(to_email, code):
-    msg = MIMEText(
-        f"Твой код подтверждения: {code}\n\n"
-        f"Код действует 10 минут. Если это не ты — просто проигнорируй письмо.",
-        "plain", "utf-8"
-    )
-    msg["Subject"] = "Код подтверждения BricksChat"
-    msg["From"] = SMTP_USER
-    msg["To"] = to_email
+    api_key = os.environ.get('UNISENDER_API_KEY')
+
+    if not api_key:
+        print("=== ОШИБКА: UNISENDER_API_KEY не найден в переменных окружения ===")
+        return
+
+    payload = {
+        "api_key": api_key,
+        "email": to_email,
+        "sender_name": "BricksChat",
+        "sender_email": os.environ.get("SMTP_USER", ""),
+        "subject": "Код подтверждения BricksChat",
+        "body": f"Твой код подтверждения: {code}\n\nКод действителен 10 минут. Если ты не запрашивал код — просто проигнорируй это письмо."
+    }
 
     try:
-        # Попытка 1: SSL (порт 465)
-        print(f"=== ПОПЫТКА ОТПРАВКИ (SSL 465) НА {to_email} ===")
-        with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=10) as server:
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        print("=== ПИСЬМО ОТПРАВЛЕНО (SSL) ===")
-        return
-    except Exception as e:
-        print(f"=== SSL НЕ СРАБОТАЛ: {e} ===")
+        response = requests.post(
+            "https://api.unisender.com/ru/api/sendEmail",
+            data=payload,
+            timeout=10
+        )
 
-    try:
-        # Попытка 2: STARTTLS (порт 587)
-        print(f"=== ПОПЫТКА ОТПРАВКИ (STARTTLS 587) НА {to_email} ===")
-        with smtplib.SMTP(SMTP_HOST, 587, timeout=10) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        print("=== ПИСЬМО ОТПРАВЛЕНО (STARTTLS) ===")
-        return
-    except Exception as e:
-        print(f"=== STARTTLS НЕ СРАБОТАЛ: {e} ===")
+        if response.status_code == 200:
+            print(f"=== УСПЕХ: Письмо для {to_email} принято Unisender ===")
+        else:
+            print(f"=== ОШИБКА UNISENDER: Статус {response.status_code}, ответ: {response.text} ===")
 
-    print("=== ПИСЬМО ТАК И НЕ ОТПРАВИЛОСЬ — СМОТРИ ОШИБКИ ВЫШЕ ===")
+    except Exception as e:
+        print(f"=== КРИТИЧЕСКАЯ ОШИБКА (сеть/запрос): {str(e)} ===")
+
 
 
 init_db()
